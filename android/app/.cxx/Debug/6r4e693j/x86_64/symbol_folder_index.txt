@@ -1,0 +1,1 @@
+/Users/mobiledev/AndroidStudioProjects/remindery/build/app/intermediates/cxx/Debug/6r4e693j/obj/x86_64

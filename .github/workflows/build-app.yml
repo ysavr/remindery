@@ -1,0 +1,341 @@
+name: Build App
+
+on:
+  push:
+    branches: [ develop, main ]
+  pull_request:
+    branches: [ develop, main ]
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      should-build-android: ${{ steps.check-branch.outputs.should-build-android }}
+      should-build-ios: ${{ steps.check-branch.outputs.should-build-ios }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Dart SDK
+        uses: dart-lang/setup-dart@v1
+
+      - name: Install FVM
+        run: dart pub global activate fvm
+
+      - name: Add FVM to PATH
+        run: echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
+
+      - name: Install Flutter version from FVM
+        run: fvm install
+
+      - name: Use FVM Flutter
+        run: fvm use --force
+
+      - name: Get Flutter dependencies
+        run: fvm flutter pub get
+
+      - name: Verify Flutter installation
+        run: fvm flutter --version
+
+      - name: Build runner
+        run: fvm flutter pub run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze code
+        run: fvm flutter analyze
+        continue-on-error: true
+
+      - name: Check branch for release builds
+        id: check-branch
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/develop" || "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "should-build-android=true" >> $GITHUB_OUTPUT
+            echo "should-build-ios=true" >> $GITHUB_OUTPUT
+          else
+            echo "should-build-android=false" >> $GITHUB_OUTPUT
+            echo "should-build-ios=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Cache Flutter setup
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            .fvm
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}-${{ hashFiles('**/.fvm/fvm_config.json') }}
+
+#      - name: Run tests
+#        run: fvm flutter test
+#        continue-on-error: true
+
+  build-android:
+    runs-on: ubuntu-latest
+    needs: setup
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Dart SDK
+        uses: dart-lang/setup-dart@v1
+
+      - name: Restore Flutter cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            .fvm
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}-${{ hashFiles('**/.fvm/fvm_config.json') }}
+
+      - name: Install FVM
+        run: dart pub global activate fvm
+
+      - name: Add FVM to PATH
+        run: echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
+
+      - name: Install Flutter version from FVM
+        run: fvm install
+
+      - name: Use FVM Flutter
+        run: fvm use --force
+
+      - name: Get Flutter dependencies
+        run: fvm flutter pub get
+
+      - name: Build runner
+        run: fvm flutter pub run build_runner build --delete-conflicting-outputs
+
+      # Build Debug APK (always runs)
+      - name: Build Debug APK (Development)
+        run: fvm flutter build apk --debug --flavor development -t lib/main_development.dart
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk-development
+          path: build/app/outputs/flutter-apk/*development-debug.apk
+
+      # Build Release APKs (only on develop/main branches)
+      - name: Create keystore file for release builds
+        if: needs.setup.outputs.should-build-android == 'true'
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/remindery.jks
+
+      - name: Build Release APK (Development)
+        if: needs.setup.outputs.should-build-android == 'true'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: fvm flutter build apk --release --flavor development -t lib/main_development.dart
+
+      - name: Build Release APK (Staging)
+        if: github.ref == 'refs/heads/main'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: fvm flutter build apk --release --flavor staging -t lib/main_staging.dart
+
+      - name: Build Release APK (Production)
+        if: github.ref == 'refs/heads/main'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: fvm flutter build apk --release --flavor production -t lib/main_production.dart
+
+      - name: Upload Release APKs
+        if: needs.setup.outputs.should-build-android == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apks
+          path: build/app/outputs/flutter-apk/*release.apk
+
+  build-ios:
+    runs-on: macos-latest
+    needs: setup
+    if: needs.setup.outputs.should-build-ios == 'true'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ${{ runner.tool_cache }}/flutter
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}-${{ hashFiles('**/.fvm/fvm_config.json') }}
+          restore-keys: |
+            ${{ runner.os }}-flutter-
+
+      - name: Setup Dart SDK
+        uses: dart-lang/setup-dart@v1
+
+      - name: Install FVM
+        run: dart pub global activate fvm
+
+      - name: Add FVM to PATH
+        run: echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
+
+      - name: Install Flutter version from FVM
+        run: fvm install
+
+      - name: Use FVM Flutter
+        run: fvm use --force
+
+      - name: Get dependencies
+        run: fvm flutter pub get
+
+      - name: Build runner
+        run: fvm flutter pub run build_runner build --delete-conflicting-outputs
+
+      - name: Setup iOS build configurations
+        run: |
+          cd ios
+          gem install xcodeproj
+          ruby -e "
+          require 'xcodeproj'
+          project = Xcodeproj::Project.open('Runner.xcodeproj')
+          release_config_template = project.build_configurations.find { |config| config.name == 'Release' }
+          debug_config_template = project.build_configurations.find { |config| config.name == 'Debug' }
+          flavors = ['Develop', 'Stag', 'Runner']
+          flavors.each do |flavor|
+            config_name = \"Release-\#{flavor}\"
+            unless project.build_configurations.any? { |config| config.name == config_name }
+              if release_config_template
+                new_config = project.new(Xcodeproj::Project::Object::XCBuildConfiguration)
+                new_config.name = config_name
+                new_config.build_settings = release_config_template.build_settings.dup
+                project.build_configuration_list.build_configurations << new_config
+                puts \"Created project configuration: \#{config_name}\"
+              else
+                puts \"Warning: 'Release' configuration template not found. Cannot create \#{config_name}.\"
+              end
+            end
+          end
+          flavors.each do |flavor|
+            config_name = \"Debug-\#{flavor}\"
+            unless project.build_configurations.any? { |config| config.name == config_name }
+              if debug_config_template
+                new_config = project.new(Xcodeproj::Project::Object::XCBuildConfiguration)
+                new_config.name = config_name
+                new_config.build_settings = debug_config_template.build_settings.dup
+                project.build_configuration_list.build_configurations << new_config
+                puts \"Created project configuration: \#{config_name}\"
+              else
+                puts \"Warning: 'Debug' configuration template not found. Cannot create \#{config_name}.\"
+              end
+            end
+          end
+          project.targets.each do |target|
+            release_target_config_template = target.build_configurations.find { |config| config.name == 'Release' }
+            debug_target_config_template = target.build_configurations.find { |config| config.name == 'Debug' }
+            flavors.each do |flavor|
+              config_name = \"Release-\#{flavor}\"
+              unless target.build_configurations.any? { |config| config.name == config_name }
+                if release_target_config_template
+                  new_config = project.new(Xcodeproj::Project::Object::XCBuildConfiguration)
+                  new_config.name = config_name
+                  new_config.build_settings = release_target_config_template.build_settings.dup
+                  target.build_configuration_list.build_configurations << new_config
+                  puts \"Created target '\#{target.name}' configuration: \#{config_name}\"
+                else
+                  puts \"Warning: Target '\#{target.name}' 'Release' configuration template not found. Cannot create \#{config_name}.\"
+                end
+              end
+            end
+            flavors.each do |flavor|
+              config_name = \"Debug-\#{flavor}\"
+              unless target.build_configurations.any? { |config| config.name == config_name }
+                if debug_target_config_template
+                  new_config = project.new(Xcodeproj::Project::Object::XCBuildConfiguration)
+                  new_config.name = config_name
+                  new_config.build_settings = debug_target_config_template.build_settings.dup
+                  target.build_configuration_list.build_configurations << new_config
+                  puts \"Created target '\#{target.name}' configuration: \#{config_name}\"
+                else
+                  puts \"Warning: Target '\#{target.name}' 'Debug' configuration template not found. Cannot create \#{config_name}.\"
+                end
+              end
+            end
+          end
+          project.save
+          puts 'Build configurations updated successfully'
+          "
+
+      # (Optional) Setup code signing (uncomment and configure as needed)
+      # - name: Import code signing certificates
+      #   uses: apple-actions/import-codesign-certs@v2
+      #   with:
+      #     p12-file-base64: ${{ secrets.IOS_CERTIFICATES_P12 }}
+      #     p12-password: ${{ secrets.IOS_CERTIFICATES_PASSWORD }}
+      #     provisioning-profile-base64: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+
+      # IPA Build for each flavor
+      - name: Build iOS IPA (Development)
+        run: fvm flutter build ipa --profile --flavor Develop -t lib/main_development.dart --no-codesign
+        continue-on-error: true
+
+      - name: Build iOS IPA (Staging)
+        run: fvm flutter build ipa --profile --flavor Stag -t lib/main_staging.dart --no-codesign
+        continue-on-error: true
+
+      - name: Build iOS IPA (Production)
+        run: fvm flutter build ipa --profile --flavor Runner -t lib/main_production.dart --no-codesign
+        continue-on-error: true
+
+      # Upload .ipa artifacts for each flavor
+      - name: Upload IPA (Development)
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ios-ipa-develop-${{ github.ref_name }}-${{ github.run_number }}
+          path: build/ios/ipa/*.ipa
+          retention-days: 7
+
+      - name: Upload IPA (Staging)
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ios-ipa-stag-${{ github.ref_name }}-${{ github.run_number }}
+          path: build/ios/ipa/*.ipa
+          retention-days: 7
+
+      - name: Upload IPA (Production)
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ios-ipa-runner-${{ github.ref_name }}-${{ github.run_number }}
+          path: build/ios/ipa/*.ipa
+          retention-days: 7
+
+      # (Optional) Upload .xcarchive as artifact (for advanced distribution)
+      # - name: Upload .xcarchive
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: ios-xcarchive
+      #     path: build/ios/archive/
+      #     retention-days: 7
+
+      # Create build info
+#      - name: Create build info
+#        run: |
+#          mkdir -p build/ios/info
+#          echo "Build Date: $(date)" > build/ios/info/build-info.txt
+#          echo "Branch: ${{ github.ref_name }}" >> build/ios/info/build-info.txt
+#          echo "Commit: ${{ github.sha }}" >> build/ios/info/build-info.txt
+#          echo "Flavors Built:" >> build/ios/info/build-info.txt
+#          ls -la build/ios/ipa/ >> build/ios/info/build-info.txt
+
+      - name: Upload iOS build logs (if builds succeed)
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ios-build-logs-${{ github.ref_name }}-${{ github.run_number }}
+          path: |
+            build/ios/info/
+          retention-days: 7

@@ -1,0 +1,104 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+// Apply sign.gradle only if it exists (for local development)
+if (new File('sign.gradle').exists()) {
+    apply from: 'sign.gradle'
+}
+
+android {
+    namespace = "com.savrix.remindery"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = "27.0.12077973"
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        applicationId = "com.savrix.remindery"
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    // Define signing configurations
+    signingConfigs {
+        // Default debug config (automatically created by Android)
+        debug {
+            // Uses default debug keystore
+        }
+
+        // Release config - will be overridden by sign.gradle if it exists locally
+        // or by environment variables in CI/CD
+        release {
+            if (System.getenv("KEYSTORE_PASSWORD") != null) {
+                // CI/CD environment - use environment variables
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+                storeFile file('remindery.jks')
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+            } else if (project.hasProperty('android.injected.signing.store.file')) {
+                // Android Studio signing
+                storeFile file(project.property('android.injected.signing.store.file'))
+                storePassword project.property('android.injected.signing.store.password')
+                keyAlias project.property('android.injected.signing.key.alias')
+                keyPassword project.property('android.injected.signing.key.password')
+            } else {
+                // Fallback - will use debug signing if sign.gradle doesn't exist
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+                storeFile file(System.getProperty('user.home') + '/.android/debug.keystore')
+                storePassword 'android'
+            }
+        }
+    }
+
+    flavorDimensions "default"
+    productFlavors {
+        production {
+            dimension "default"
+            applicationIdSuffix ""
+            manifestPlaceholders = [appName: "Remindery"]
+        }
+        staging {
+            dimension "default"
+            applicationIdSuffix ".stag"
+            manifestPlaceholders = [appName: "[STAG] Remindery"]
+        }
+        development {
+            dimension "default"
+            applicationIdSuffix ".dev"
+            manifestPlaceholders = [appName: "[DEV] Remindery"]
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+            debuggable true
+            minifyEnabled false
+        }
+
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt')
+            debuggable false
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}
