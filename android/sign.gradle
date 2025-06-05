@@ -1,0 +1,24 @@
+apply plugin: 'com.android.application'
+
+android {
+    signingConfigs {
+        develop {
+            keyAlias 'sample'
+            keyPassword 'sample'
+            storeFile file('sample.jks')
+            storePassword 'sample'
+        }
+        stag {
+            keyAlias 'sample'
+            keyPassword 'sample'
+            storeFile file('sample.jks')
+            storePassword 'sample'
+        }
+        release {
+            keyAlias 'sample'
+            keyPassword 'sample'
+            storeFile file('sample.jks')
+            storePassword 'sample'
+        }
+    }
+}

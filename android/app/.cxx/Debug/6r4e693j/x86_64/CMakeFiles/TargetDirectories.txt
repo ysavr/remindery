@@ -1,0 +1,2 @@
+/Users/mobiledev/AndroidStudioProjects/remindery/android/app/.cxx/Debug/6r4e693j/x86_64/CMakeFiles/edit_cache.dir
+/Users/mobiledev/AndroidStudioProjects/remindery/android/app/.cxx/Debug/6r4e693j/x86_64/CMakeFiles/rebuild_cache.dir
