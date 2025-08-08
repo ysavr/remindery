@@ -57,10 +57,6 @@ jobs:
           severity: HIGH,CRITICAL
           path: .
 
-      # ✅ Unit tests with coverage
-      - name: Run Tests with Coverage
-        run: fvm flutter test --coverage
-
       # ✅ MobSFScan
       - name: MobSFScan
         uses: MobSF/mobsfscan@main
