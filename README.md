@@ -13,21 +13,21 @@ A Flutter App
 
 ## How to use 🚀
 
-Jalan kan script `core_script` untuk memudahkan dalam melakukan beberapa command seperti `flutter pub get`, `build_runner`, `build apk`, dsb..
+Jalan kan script `flutter_task` untuk memudahkan dalam melakukan beberapa command seperti `flutter pub get`, `build_runner`, `build apk`, dsb..
 
 ### Membuat script executable
 ```
-chmod +x core_script.sh
+chmod +x flutter_task.sh
 ```
 
 menjalankan executable script
 ```
-./core_script.sh
+./flutter_task.sh
 ```
 
 ### Run script
 ```
-bash core_script.sh
+bash flutter_task.sh
 ```
 
 ## How to build 📦
