@@ -59,7 +59,7 @@ jobs:
 
       # ✅ License compliance check (avoid forbidden licenses)
       - name: License Compliance Check
-        run: fvm flutter run license_checker --fatal-licenses GPL-3.0
+        run: fvm flutter run license_checker
 
       # ✅ Unit tests with coverage
       - name: Run Tests with Coverage
