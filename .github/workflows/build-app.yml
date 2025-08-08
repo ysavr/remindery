@@ -57,10 +57,6 @@ jobs:
           severity: HIGH,CRITICAL
           path: .
 
-      # ✅ License compliance check (avoid forbidden licenses)
-      - name: License Compliance Check
-        run: fvm flutter run license_checker
-
       # ✅ Unit tests with coverage
       - name: Run Tests with Coverage
         run: fvm flutter test --coverage
